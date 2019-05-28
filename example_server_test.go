@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log"
 	"net"
 	"time"
 
@@ -24,6 +25,12 @@ type Handler interface {
 	ServeTCP(w ResponseWriter, r *Request)
 }
 
+type HandlerFunc func(w ResponseWriter, r *Request)
+
+func (fn HandlerFunc) ServeTCP(w ResponseWriter, r *Request) {
+	fn(w, r)
+}
+
 type serverCodec struct {
 	server *Server
 
@@ -33,7 +40,9 @@ type serverCodec struct {
 func (c *serverCodec) Handle(ctx context.Context, deadline tcp.SetWriteDeadline) bool {
 	req := &Request{Body: c.conn}
 
-	deadline(time.Now().Add(c.server.WriteTimeout))
+	if d := c.server.WriteTimeout; d > 0 {
+		deadline(time.Now().Add(d))
+	}
 
 	c.server.Handler.ServeTCP(c.conn, req)
 
@@ -104,4 +113,23 @@ func (s *Server) Shutdown(ctx context.Context) error {
 
 func (s *Server) Close() error {
 	return s.srv.Close()
+}
+
+func ExampleServer() {
+	h := HandlerFunc(func(w ResponseWriter, r *Request) {
+		// Do your read and write here
+	})
+
+	srv := &Server{
+		Addr:         "localhost:80",
+		Handler:      h,
+		ReadTimeout:  100 * time.Millisecond,
+		WriteTimeout: 100 * time.Millisecond,
+		IdleTimeout:  10 * time.Second,
+	}
+	defer srv.Close()
+
+	if err := srv.ListenAndServe(); err != nil {
+		log.Print(err)
+	}
 }
