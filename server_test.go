@@ -41,7 +41,7 @@ func TestNewServer_ErrorsOnNilFactory(t *testing.T) {
 }
 
 func TestServer_ServesConnectionCloses(t *testing.T) {
-	addr, srv := newTestServer(t, func(conn io.ReadWriter) tcp.ServerCodec {
+	addr, srv := newTestServer(t, func(conn tcp.Connection) tcp.ServerCodec {
 		return &pingCodec{close: true, conn: conn}
 	}, tcp.ServerOpts{})
 	defer srv.Close()
@@ -72,7 +72,7 @@ func TestServer_ServesConnectionCloses(t *testing.T) {
 }
 
 func TestServer_ServesConnectionStaysOpen(t *testing.T) {
-	addr, srv := newTestServer(t, func(conn io.ReadWriter) tcp.ServerCodec {
+	addr, srv := newTestServer(t, func(conn tcp.Connection) tcp.ServerCodec {
 		return &pingCodec{conn: conn}
 	}, tcp.ServerOpts{})
 	defer srv.Close()
@@ -99,10 +99,10 @@ type pingCodec struct {
 	writeTimeout time.Duration
 	close        bool
 
-	conn io.ReadWriter
+	conn tcp.Connection
 }
 
-func (c *pingCodec) Handle(ctx context.Context, deadline tcp.SetWriteDeadline) bool {
+func (c *pingCodec) Handle(ctx context.Context, deadline tcp.SetWriteDeadline) {
 	var ping [4]byte
 	c.conn.Read(ping[:])
 
@@ -112,5 +112,7 @@ func (c *pingCodec) Handle(ctx context.Context, deadline tcp.SetWriteDeadline) b
 
 	c.conn.Write([]byte("pong"))
 
-	return c.close
+	if c.close {
+		c.conn.Close()
+	}
 }

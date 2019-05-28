@@ -29,11 +29,11 @@ type SetWriteDeadline func(time.Time)
 // function.
 type ServerCodec interface {
 	// Handle handles a TCP request.
-	Handle(context.Context, SetWriteDeadline) (close bool)
+	Handle(context.Context, SetWriteDeadline)
 }
 
 // ServerCodecFactory is a function that creates a ServerCodec.
-type ServerCodecFactory func(conn io.ReadWriter) ServerCodec
+type ServerCodecFactory func(conn Connection) ServerCodec
 
 var (
 	bufioReaderPool sync.Pool
@@ -89,7 +89,8 @@ type conn struct {
 	bufr *bufio.Reader
 	bufw *bufio.Writer
 
-	state uint32
+	closing atomicBool
+	state   uint32
 }
 
 func (c *conn) setState(state connState) {
@@ -108,17 +109,21 @@ func (c *conn) getState() connState {
 	return connState(atomic.LoadUint32(&c.state))
 }
 
-type readWriter struct {
-	r io.Reader
-	w io.Writer
+func (c *conn) Read(p []byte) (int, error) {
+	return c.bufr.Read(p)
 }
 
-func (rw *readWriter) Read(p []byte) (n int, err error) {
-	return rw.r.Read(p)
+func (c *conn) Write(p []byte) (int, error) {
+	return c.bufw.Write(p)
 }
 
-func (rw *readWriter) Write(p []byte) (n int, err error) {
-	return rw.w.Write(p)
+func (c *conn) RemoteAddr() string {
+	return c.rwc.RemoteAddr().String()
+}
+
+func (c *conn) Close() error {
+	c.closing.set()
+	return nil
 }
 
 func (c *conn) serve(ctx context.Context) {
@@ -131,12 +136,14 @@ func (c *conn) serve(ctx context.Context) {
 		c.close()
 	}()
 
+	// TLS
+
 	ctx, cancelCtx := context.WithCancel(ctx)
 	defer cancelCtx()
 
 	c.bufr = newBufioReader(c.rwc)
 	c.bufw = newBufioWriter(c.rwc)
-	c.codec = c.server.fac(&readWriter{r: c.bufr, w: c.rwc})
+	c.codec = c.server.fac(c)
 
 	for {
 		if d := c.server.readTimeout; d != 0 {
@@ -144,12 +151,12 @@ func (c *conn) serve(ctx context.Context) {
 		}
 
 		c.setState(stateActive)
-		closing := c.codec.Handle(ctx, func(t time.Time) {
+		c.codec.Handle(ctx, func(t time.Time) {
 			_ = c.rwc.SetWriteDeadline(t)
 		})
 		_ = c.bufw.Flush()
 
-		if closing {
+		if c.closing.isSet() {
 			return
 		}
 		c.setState(stateIdle)

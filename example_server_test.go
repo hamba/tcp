@@ -34,10 +34,10 @@ func (fn HandlerFunc) ServeTCP(w ResponseWriter, r *Request) {
 type serverCodec struct {
 	server *Server
 
-	conn io.ReadWriter
+	conn io.ReadWriteCloser
 }
 
-func (c *serverCodec) Handle(ctx context.Context, deadline tcp.SetWriteDeadline) bool {
+func (c *serverCodec) Handle(ctx context.Context, deadline tcp.SetWriteDeadline) {
 	req := &Request{Body: c.conn}
 
 	if d := c.server.WriteTimeout; d > 0 {
@@ -46,7 +46,9 @@ func (c *serverCodec) Handle(ctx context.Context, deadline tcp.SetWriteDeadline)
 
 	c.server.Handler.ServeTCP(c.conn, req)
 
-	return req.Close
+	if req.Close {
+		_ = c.conn.Close()
+	}
 }
 
 func (c *serverCodec) Close() error {
@@ -100,7 +102,7 @@ func (s *Server) Serve(ln net.Listener) error {
 	return s.srv.Serve(ln)
 }
 
-func (s *Server) createCodec(conn io.ReadWriter) tcp.ServerCodec {
+func (s *Server) createCodec(conn tcp.Connection) tcp.ServerCodec {
 	return &serverCodec{
 		server: s,
 		conn:   conn,
