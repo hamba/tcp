@@ -22,8 +22,6 @@ type ClientCodec interface {
 
 type ClientCodecFactory func(conn Connection) ClientCodec
 
-var DefaultPool Pool
-
 type Pool interface {
 	Get(addr string) (Connection, error)
 }
@@ -31,9 +29,6 @@ type Pool interface {
 type ClientOpts struct {
 	// Timeout is the maximum duration to wait for a request to complete.
 	Timeout time.Duration
-
-	// Pool is the connection pool to use to get a connection.
-	Pool Pool
 }
 
 type Client struct {
@@ -41,14 +36,13 @@ type Client struct {
 	pool Pool
 }
 
-func NewClient(fac ClientCodecFactory, opts ClientOpts) (*Client, error) {
+func NewClient(fac ClientCodecFactory, pool Pool, opts ClientOpts) (*Client, error) {
 	if fac == nil {
 		return nil, errors.New("tcp: fac cannot be nil")
 	}
 
-	pool := DefaultPool
-	if opts.Pool == nil {
-		pool = opts.Pool
+	if pool == nil {
+		return nil, errors.New("tcp: pool cannot be nil")
 	}
 
 	return &Client{
