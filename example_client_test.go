@@ -26,7 +26,7 @@ func (c *clientCodec) Close() error {
 }
 
 type Client struct {
-	c *tcp.Client
+	client *tcp.Client
 }
 
 func (c *Client) createCodec(conn tcp.Connection) tcp.ClientCodec {
