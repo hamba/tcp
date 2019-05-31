@@ -24,7 +24,7 @@ type SetWriteDeadline func(time.Time)
 // ServerCodec represents a handler of TCP requests.
 //
 // Handle should read the TCP request and write the response to the connection,
-// returning a bool indicating if the connection should be closed.
+// closing the connection when it should no longer be used.
 // If a write deadline is needed, it can be set with the SetWriteDeadline
 // function.
 type ServerCodec interface {

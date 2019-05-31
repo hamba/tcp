@@ -9,6 +9,7 @@ import (
 )
 
 type ClientCodec interface {
+	Connection() Connection
 	Write(ctx context.Context, w io.Writer) (read bool, err error)
 	Read(ctx context.Context, r io.Reader) error
 }
@@ -19,15 +20,21 @@ type PoolOpts struct {
 	// Dialer is the dialer to use
 	Dialer net.Dialer
 
+	// TLS Config
+
+	// TLS Handshake Timeout
+
 	// IdleTimeout is the maximum duration that a connection will remain idle for.
 	IdleTimeout time.Duration
 }
 
 // Pool represents a connection pool
 type Pool interface {
-	Get(addr string) (Connection, error)
+	Get(addr string) (Connection, ClientCodec, error)
 
 	Put(Connection)
+
+	unexported()
 }
 
 type pool struct {
@@ -48,35 +55,29 @@ func NewPool(fac ClientCodecFactory, opts PoolOpts) (Pool, error) {
 	}, nil
 }
 
-func (p *pool) Get(addr string) (Connection, error) {
-	return nil, nil
+func (p *pool) Get(addr string) (Connection, ClientCodec, error) {
+	return nil, nil, nil
 }
 
 func (p *pool) Put(conn Connection) {
 
 }
 
-type ClientOpts struct {
+func (p *pool) unexported() {
+
+}
+
+type Client struct {
 	// Timeout is the maximum duration to wait for a request to complete.
 	Timeout time.Duration
 }
 
-type Client struct {
-	pool Pool
-}
-
-func NewClient(pool Pool, opts ClientOpts) (*Client, error) {
+func (c *Client) Send(ctx context.Context, pool Pool, addr string, w io.Writer, r io.Reader) error {
 	if pool == nil {
-		return nil, errors.New("tcp: pool cannot be nil")
+		// Perhaps, dial and send end
+		return errors.New("tcp: pool cannot be nil")
 	}
 
-	return &Client{
-
-		pool: pool,
-	}, nil
-}
-
-func (c *Client) Send(ctx context.Context, w io.Writer, r io.Reader) error {
 	// All in a loop with checks for retry: conn could have been closed on idle, etc.
 
 	// Get connection+codec from pool
@@ -88,6 +89,15 @@ func (c *Client) Send(ctx context.Context, w io.Writer, r io.Reader) error {
 	// Wait for data, or timeout (tell the conn we are waiting for data)
 
 	// Run the codec read
+
+	for {
+		conn, codec, err := pool.Get(addr)
+		if err != nil {
+			return err
+		}
+
+
+	}
 
 	panic("TODO")
 }

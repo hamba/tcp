@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/hamba/tcp"
@@ -66,6 +67,7 @@ type Server struct {
 
 	IdleTimeout time.Duration
 
+	mu  sync.Mutex
 	srv *tcp.Server
 }
 
@@ -87,6 +89,7 @@ func (s *Server) Serve(ln net.Listener) error {
 		return errors.New("server: handler cannot be nil")
 	}
 
+	s.mu.Lock()
 	if s.srv == nil {
 		srv, err := tcp.NewServer(s.createCodec, tcp.ServerOpts{
 			ReadTimeout: s.ReadTimeout,
@@ -98,6 +101,7 @@ func (s *Server) Serve(ln net.Listener) error {
 
 		s.srv = srv
 	}
+	s.mu.Unlock()
 
 	return s.srv.Serve(ln)
 }
@@ -123,7 +127,7 @@ func ExampleServer() {
 	})
 
 	srv := &Server{
-		Addr:         "localhost:80",
+		Addr:         "localhost:8090",
 		Handler:      h,
 		ReadTimeout:  100 * time.Millisecond,
 		WriteTimeout: 100 * time.Millisecond,
