@@ -14,7 +14,7 @@ type clientCodec struct {
 	conn io.ReadWriter
 }
 
-func (c *clientCodec) Write(ctx context.Context, w io.Writer) (read bool, err error) {
+func (c *clientCodec) Write(ctx context.Context, w io.Writer) error {
 	panic("TODO")
 }
 
@@ -49,11 +49,8 @@ func NewClient(pool Pool, timeout time.Duration) (*Client, error) {
 		pool = DefaultPool
 	}
 
-	client, err := tcp.NewClient(pool, tcp.ClientOpts{
+	client := &tcp.Client{
 		Timeout: timeout,
-	})
-	if err != nil {
-		return nil, err
 	}
 
 	return &Client{
@@ -61,10 +58,10 @@ func NewClient(pool Pool, timeout time.Duration) (*Client, error) {
 	}, nil
 }
 
-func (c *Client) Send(ctx context.Context, b []byte) ([]byte, error) {
+func (c *Client) Send(ctx context.Context, addr string, b []byte) ([]byte, error) {
 	inBuf := bytes.NewBuffer(b)
 	outBuf := bytes.NewBuffer(nil)
-	if err := c.client.Send(ctx, inBuf, outBuf); err != nil {
+	if err := c.client.Send(ctx, nil, addr, inBuf, outBuf); err != nil {
 		return nil, err
 	}
 

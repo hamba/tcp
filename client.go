@@ -10,7 +10,7 @@ import (
 
 type ClientCodec interface {
 	Connection() Connection
-	Write(ctx context.Context, w io.Writer) (read bool, err error)
+	Write(ctx context.Context, w io.Writer) error
 	Read(ctx context.Context, r io.Reader) error
 }
 
@@ -30,11 +30,11 @@ type PoolOpts struct {
 
 // Pool represents a connection pool
 type Pool interface {
-	Get(addr string) (Connection, ClientCodec, error)
+	Get(ctx context.Context, addr string) (Connection, error)
 
 	Put(Connection)
 
-	unexported()
+	getCodec(Connection) ClientCodec
 }
 
 type pool struct {
@@ -55,16 +55,16 @@ func NewPool(fac ClientCodecFactory, opts PoolOpts) (Pool, error) {
 	}, nil
 }
 
-func (p *pool) Get(addr string) (Connection, ClientCodec, error) {
-	return nil, nil, nil
+func (p *pool) Get(ctx context.Context, addr string) (Connection, error) {
+	return nil, nil
 }
 
 func (p *pool) Put(conn Connection) {
 
 }
 
-func (p *pool) unexported() {
-
+func (p *pool) getCodec(Connection) ClientCodec {
+	return nil
 }
 
 type Client struct {
@@ -76,6 +76,10 @@ func (c *Client) Send(ctx context.Context, pool Pool, addr string, w io.Writer, 
 	if pool == nil {
 		// Perhaps, dial and send end
 		return errors.New("tcp: pool cannot be nil")
+	}
+
+	if w == nil {
+		return errors.New("tcp: w cannot be nil")
 	}
 
 	// All in a loop with checks for retry: conn could have been closed on idle, etc.
@@ -91,13 +95,35 @@ func (c *Client) Send(ctx context.Context, pool Pool, addr string, w io.Writer, 
 	// Run the codec read
 
 	for {
-		conn, codec, err := pool.Get(addr)
+		conn, err := pool.Get(ctx, addr)
 		if err != nil {
 			return err
 		}
+		codec := pool.getCodec(conn)
 
+		if err = codec.Write(ctx, w); err != nil {
+			_ = conn.Close()
+			return err
+		}
 
+		if r == nil {
+			pool.Put(conn)
+			return nil
+		}
+
+		// TODO: how to read from conn in a channel,
+		// Also, the connection really needs a read loop at this point
+		// so it can detect idle timeout
+		select {
+		case err = <-ctx.Done():
+			_ = conn.Close()
+			return err
+		}
+
+		if err = codec.Read(ctx, r); err == nil {
+			return nil
+		}
+
+		// TODO: should we try again
 	}
-
-	panic("TODO")
 }
