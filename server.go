@@ -37,7 +37,6 @@ type ServerCodecFactory func(conn Connection) ServerCodec
 
 var (
 	bufioReaderPool sync.Pool
-	bufioWriterPool sync.Pool
 )
 
 func newBufioReader(r io.Reader) *bufio.Reader {
@@ -53,21 +52,6 @@ func newBufioReader(r io.Reader) *bufio.Reader {
 func putBufioReader(r *bufio.Reader) {
 	r.Reset(nil)
 	bufioReaderPool.Put(r)
-}
-
-func newBufioWriter(w io.Writer) *bufio.Writer {
-	if v := bufioWriterPool.Get(); v != nil {
-		br := v.(*bufio.Writer)
-		br.Reset(w)
-		return br
-	}
-
-	return bufio.NewWriter(w)
-}
-
-func putBufioWriter(w *bufio.Writer) {
-	w.Reset(nil)
-	bufioWriterPool.Put(w)
 }
 
 type connState int
@@ -87,7 +71,6 @@ type conn struct {
 	rwc net.Conn
 
 	bufr *bufio.Reader
-	bufw *bufio.Writer
 
 	closing atomicBool
 	state   uint32
@@ -114,7 +97,7 @@ func (c *conn) Read(p []byte) (int, error) {
 }
 
 func (c *conn) Write(p []byte) (int, error) {
-	return c.bufw.Write(p)
+	return c.rwc.Write(p)
 }
 
 func (c *conn) RemoteAddr() string {
@@ -142,7 +125,6 @@ func (c *conn) serve(ctx context.Context) {
 	defer cancelCtx()
 
 	c.bufr = newBufioReader(c.rwc)
-	c.bufw = newBufioWriter(c.rwc)
 	c.codec = c.server.fac(c)
 
 	for {
@@ -154,7 +136,6 @@ func (c *conn) serve(ctx context.Context) {
 		c.codec.Handle(ctx, func(t time.Time) {
 			_ = c.rwc.SetWriteDeadline(t)
 		})
-		_ = c.bufw.Flush()
 
 		if c.closing.isSet() {
 			return
@@ -175,12 +156,6 @@ func (c *conn) close() {
 	if c.bufr != nil {
 		putBufioReader(c.bufr)
 		c.bufr = nil
-	}
-
-	if c.bufw != nil {
-		_ = c.bufw.Flush()
-		putBufioWriter(c.bufw)
-		c.bufw = nil
 	}
 
 	if closer, ok := c.codec.(io.Closer); ok {
