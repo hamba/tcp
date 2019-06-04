@@ -22,6 +22,11 @@ type Request struct {
 	Close bool
 }
 
+func (r *Request) Write(w io.Writer) error {
+	_, err := io.Copy(w, r.Body)
+	return err
+}
+
 type Handler interface {
 	ServeTCP(w ResponseWriter, r *Request)
 }
